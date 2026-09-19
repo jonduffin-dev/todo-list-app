@@ -9,15 +9,25 @@
 
   <h1>My To-Do List</h1>
 
-  <div id="input-area">
-    <input type="text" id="task-input" placeholder="What do you need to do?">
-    <button id="add-button">Add</button>
+  <div id="auth-area">
+    <button id="sign-in-button">Sign in with Google</button>
+    <div id="user-info" style="display: none;">
+      <span id="user-name"></span>
+      <button id="sign-out-button">Sign out</button>
+    </div>
   </div>
 
-  <ul id="task-list">
-    <!-- Task items will be added here by JavaScript -->
-  </ul>
+  <div id="app-area" style="display: none;">
+    <div id="input-area">
+      <input type="text" id="task-input" placeholder="What do you need to do?">
+      <button id="add-button">Add</button>
+    </div>
 
-  <script src="script.js"></script>
+    <ul id="task-list">
+      <!-- Task items will be added here by JavaScript -->
+    </ul>
+  </div>
+
+  <script type="module" src="script.js"></script>
 </body>
 </html>

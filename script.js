@@ -1,14 +1,82 @@
+import { auth, db } from './firebase-config.js';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js";
+import {
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+
 // Grab references to the HTML elements we need to work with
+const signInButton = document.getElementById('sign-in-button');
+const signOutButton = document.getElementById('sign-out-button');
+const userInfo = document.getElementById('user-info');
+const userName = document.getElementById('user-name');
+const appArea = document.getElementById('app-area');
+
 const taskInput = document.getElementById('task-input');
 const addButton = document.getElementById('add-button');
 const taskList = document.getElementById('task-list');
 
-// Load any tasks saved from last time, or start with an empty list
-let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+let currentUser = null;
+let unsubscribeFromTasks = null; // stops listening to the previous user's tasks on sign-out
 
-function saveTasks() {
-  localStorage.setItem('tasks', JSON.stringify(tasks));
-}
+const googleProvider = new GoogleAuthProvider();
+
+signInButton.addEventListener('click', () => {
+  signInWithPopup(auth, googleProvider).catch((error) => {
+    console.error('Sign-in failed:', error);
+    alert('Sign-in failed: ' + error.message);
+  });
+});
+
+signOutButton.addEventListener('click', () => {
+  signOut(auth);
+});
+
+// Firebase calls this function automatically whenever the user signs in,
+// signs out, or the page first loads (to report whether they're already
+// signed in from a previous visit).
+onAuthStateChanged(auth, (user) => {
+  currentUser = user;
+
+  if (unsubscribeFromTasks) {
+    unsubscribeFromTasks();
+    unsubscribeFromTasks = null;
+  }
+
+  if (user) {
+    signInButton.style.display = 'none';
+    userInfo.style.display = 'block';
+    userName.textContent = user.displayName;
+    appArea.style.display = 'block';
+
+    // Each user's tasks live in their own Firestore subcollection.
+    // onSnapshot "subscribes" to that subcollection: it runs immediately
+    // with the current data, then runs again automatically every time
+    // the data changes (including changes from another tab or device).
+    const tasksRef = collection(db, 'users', user.uid, 'tasks');
+    unsubscribeFromTasks = onSnapshot(tasksRef, (snapshot) => {
+      const tasks = [];
+      snapshot.forEach((docSnapshot) => {
+        tasks.push({ id: docSnapshot.id, ...docSnapshot.data() });
+      });
+      renderTasks(tasks);
+    });
+  } else {
+    signInButton.style.display = 'inline-block';
+    userInfo.style.display = 'none';
+    appArea.style.display = 'none';
+    taskList.innerHTML = '';
+  }
+});
 
 // Plays a short beep using the Web Audio API (no sound file needed)
 function playCheckSound() {
@@ -23,7 +91,6 @@ function playCheckSound() {
   oscillator.type = 'sine';
   oscillator.frequency.value = 880; // musical note A5
 
-  // Quick fade-out so it sounds like a short "ding" rather than a buzz
   gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
   gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
 
@@ -31,11 +98,10 @@ function playCheckSound() {
   oscillator.stop(ctx.currentTime + 0.2);
 }
 
-function renderTasks() {
-  // Clear the current list and rebuild it from the `tasks` array
+function renderTasks(tasks) {
   taskList.innerHTML = '';
 
-  tasks.forEach((task, index) => {
+  tasks.forEach((task) => {
     const li = document.createElement('li');
     if (task.completed) {
       li.classList.add('completed');
@@ -46,7 +112,7 @@ function renderTasks() {
     if (task.completed) {
       circle.classList.add('checked');
     }
-    circle.addEventListener('click', () => toggleComplete(index));
+    circle.addEventListener('click', () => toggleComplete(task.id, task.completed));
 
     const span = document.createElement('span');
     span.textContent = task.text;
@@ -54,7 +120,7 @@ function renderTasks() {
     const deleteButton = document.createElement('button');
     deleteButton.textContent = 'Delete';
     deleteButton.classList.add('delete-button');
-    deleteButton.addEventListener('click', () => deleteTask(index));
+    deleteButton.addEventListener('click', () => deleteTask(task.id));
 
     li.appendChild(circle);
     li.appendChild(span);
@@ -65,30 +131,27 @@ function renderTasks() {
 
 function addTask() {
   const text = taskInput.value.trim();
-  if (text === '') return;
+  if (text === '' || !currentUser) return;
 
-  tasks.push({ text: text, completed: false });
+  const tasksRef = collection(db, 'users', currentUser.uid, 'tasks');
+  addDoc(tasksRef, { text: text, completed: false });
   taskInput.value = '';
-
-  saveTasks();
-  renderTasks();
+  // No manual re-render here: the onSnapshot listener above fires
+  // automatically once Firestore confirms the new task, and redraws the list.
 }
 
-function toggleComplete(index) {
-  tasks[index].completed = !tasks[index].completed;
+function toggleComplete(taskId, currentlyCompleted) {
+  const taskRef = doc(db, 'users', currentUser.uid, 'tasks', taskId);
+  updateDoc(taskRef, { completed: !currentlyCompleted });
 
-  if (tasks[index].completed) {
+  if (!currentlyCompleted) {
     playCheckSound();
   }
-
-  saveTasks();
-  renderTasks();
 }
 
-function deleteTask(index) {
-  tasks.splice(index, 1);
-  saveTasks();
-  renderTasks();
+function deleteTask(taskId) {
+  const taskRef = doc(db, 'users', currentUser.uid, 'tasks', taskId);
+  deleteDoc(taskRef);
 }
 
 addButton.addEventListener('click', addTask);
@@ -98,5 +161,3 @@ taskInput.addEventListener('keydown', (event) => {
     addTask();
   }
 });
-
-renderTasks();
