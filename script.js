@@ -10,6 +10,27 @@ function saveTasks() {
   localStorage.setItem('tasks', JSON.stringify(tasks));
 }
 
+// Plays a short beep using the Web Audio API (no sound file needed)
+function playCheckSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioContextClass();
+  const oscillator = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(ctx.destination);
+
+  oscillator.type = 'sine';
+  oscillator.frequency.value = 880; // musical note A5
+
+  // Quick fade-out so it sounds like a short "ding" rather than a buzz
+  gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+
+  oscillator.start();
+  oscillator.stop(ctx.currentTime + 0.2);
+}
+
 function renderTasks() {
   // Clear the current list and rebuild it from the `tasks` array
   taskList.innerHTML = '';
@@ -20,15 +41,22 @@ function renderTasks() {
       li.classList.add('completed');
     }
 
+    const circle = document.createElement('div');
+    circle.classList.add('check-circle');
+    if (task.completed) {
+      circle.classList.add('checked');
+    }
+    circle.addEventListener('click', () => toggleComplete(index));
+
     const span = document.createElement('span');
     span.textContent = task.text;
-    span.addEventListener('click', () => toggleComplete(index));
 
     const deleteButton = document.createElement('button');
     deleteButton.textContent = 'Delete';
     deleteButton.classList.add('delete-button');
     deleteButton.addEventListener('click', () => deleteTask(index));
 
+    li.appendChild(circle);
     li.appendChild(span);
     li.appendChild(deleteButton);
     taskList.appendChild(li);
@@ -48,6 +76,11 @@ function addTask() {
 
 function toggleComplete(index) {
   tasks[index].completed = !tasks[index].completed;
+
+  if (tasks[index].completed) {
+    playCheckSound();
+  }
+
   saveTasks();
   renderTasks();
 }
